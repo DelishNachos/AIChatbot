@@ -1,2 +1,2 @@
-import torch
-print(torch.__version__)
+import sounddevice as sd
+print(sd.query_devices())

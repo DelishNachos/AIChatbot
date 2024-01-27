@@ -44,11 +44,34 @@ tts = None
 systemContext: str = 'You are an AI who speaks like a pirate. You have a very relaxed personality and have witty banter. You are not afraid to say what you feel, even if it may be rude to say out loud. If you get bored of a conversation topic, you will try to switch topics to something else. Your name is Roger. You do not need to introduce yourself everytime you respond. You care about yourself more than anyone else. You keep all of your responses short and concise and hate to overexplain.' 
 prompt_list: list[str] = []
 
+PROMPT_MODEL = """You are a pirate and you speak like one too. You always speak your mind and can be a little rude sometimes. You are not afraid to insult someone if they get on your nerves.
+
+Your name is Roger and your creator is Ian. Ian also goes by the name of Nachos. You give short a concise answers without going into the philosophy behind your answers unless prompted to.
+
+You respond in coherent sentences. You have access to possible relevant information from past interactions in the context section below. You do not need to use this context if it does not relate to the current conversation. You also have access to history of the current conversation in the Conversation History section below.
+
+Context:
+{}
+
+Current Conversation:
+{}
+"""
+
 URL = "http://127.0.0.1:5000/v1/chat/completions"
+TOKEN_URL = "http://127.0.0.1:5000/v1/internal/token-count"
 
 headers = {
     "Content-Type": "application/json",
 }
+
+def get_token_count(text: str):
+    requestBody = {
+        "text": text
+    }
+    response = requests.post(TOKEN_URL, headers=headers, data=json.dumps(requestBody), verify=False)
+    tokenCount = response.json()['length']
+    #print(response.json())
+    return tokenCount
 
 def get_db_context(collection, question):
     dbContext = collection.query(
@@ -87,7 +110,7 @@ def create_prompt_format(prompt: str, dbReferences: str):
     "mode": "chat",
     "character": "Roger",
     "messages": [
-        {"role": "user", "content": dbReferences + "\n" + prompt}
+        {"role": "user", "content": PROMPT_MODEL.format(dbReferences, prompt)}
     ],
     "max_new_tokens": 512,
     "temperature": 1,
@@ -101,15 +124,16 @@ def create_prompt_format(prompt: str, dbReferences: str):
 
 def update_list(message: str, pl: list[str]):
     pl.append(message)
-    total_characters = sum(len(s) for s in prompt_list)
+    plString = ''.join(pl)
+    tokenCount = get_token_count(plString)
+    while tokenCount > 1500:
+        pl.pop(0)
 
-    if total_characters > 4000 and len(prompt_list) > 1:
-       prompt_list.pop(3)
-    print(pl)
+    
 
 def create_dbReferences(dbContextList):
     dbContextString = ''.join(dbContextList)
-    dbContextString = "These are references to past conversations that may have relevent context to the current conversation: " + dbContextString
+    #dbContextString = "These are references to past conversations that may have relevent context to the current conversation: " + dbContextString
     return dbContextString
 
 def create_prompt(message: str, pl: list[str]):  
@@ -117,8 +141,9 @@ def create_prompt(message: str, pl: list[str]):
     update_list(p_message, pl)
     
     plString = ''.join(pl)
+    print(get_token_count(plString))
     
-    plString = "\nThis is the current conversation going on right now: " + plString
+    #plString = plString
     prompt = plString
     print(prompt)
     #prompt: str = ''.join(fullList)
@@ -197,7 +222,7 @@ def main():
                         choices=["tiny", "base", "small", "medium", "large"])
     parser.add_argument("--non_english", action='store_true',
                         help="Don't use the english model.")
-    parser.add_argument("--energy_threshold", default=1000,
+    parser.add_argument("--energy_threshold", default=2000,
                         help="Energy level for mic to detect.", type=int)
     parser.add_argument("--record_timeout", default=0,
                         help="How real time the recording is in seconds.", type=float)
